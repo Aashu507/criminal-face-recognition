@@ -24,10 +24,10 @@ class CCTVEnhancer:
 
     def __init__(
         self,
-        clahe_clip_limit: float = 2.5,
+        clahe_clip_limit: float = 1.8,
         clahe_grid_size: Tuple[int, int] = (8, 8),
         denoise_strength: int = 5,
-        sharpen_strength: float = 1.2,
+        sharpen_strength: float = 0.6,
     ):
         self.clahe = cv2.createCLAHE(
             clipLimit=clahe_clip_limit, tileGridSize=clahe_grid_size
