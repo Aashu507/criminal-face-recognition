@@ -1,0 +1,39 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# InsightFace models (large files)
+models/
+
+# ChromaDB persistence
+chroma_db/
+data/chromadb/
+*.sqlite3
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Data (don't commit criminal images)
+data/criminals/*
+data/queries/*
+!data/criminals/.gitkeep
+!data/queries/.gitkeep
