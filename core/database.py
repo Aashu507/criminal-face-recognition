@@ -1,0 +1,286 @@
+"""
+Face Database
+=============
+Persistent vector store for criminal face embeddings using ChromaDB.
+
+ChromaDB provides:
+- Fast approximate nearest-neighbor search
+- Persistent on-disk storage (survives restarts)
+- Metadata filtering (search by name, case ID, etc.)
+- Built-in cosine similarity distance
+
+Each enrolled criminal gets a record with:
+- 512-dim ArcFace embedding (for matching)
+- Metadata: name, criminal_id, case_number, notes, enrollment date
+- Optional: base64 face thumbnail for quick display
+"""
+
+import os
+import json
+import base64
+import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+
+import cv2
+import numpy as np
+from rich.console import Console
+
+console = Console()
+
+# Lazy-load chromadb
+_chromadb = None
+
+
+def _get_chromadb():
+    global _chromadb
+    if _chromadb is None:
+        import chromadb
+        _chromadb = chromadb
+    return _chromadb
+
+
+class FaceDatabase:
+    """
+    ChromaDB-backed vector store for criminal face embeddings.
+
+    Usage:
+        db = FaceDatabase("./chroma_db")
+        db.enroll("CRIM001", embedding, {"name": "John Doe", "case": "2024-001"})
+        results = db.search(query_embedding, top_k=5)
+    """
+
+    COLLECTION_NAME = "criminal_faces"
+
+    def __init__(self, persist_dir: str = "./chroma_db"):
+        """
+        Initialize the face database.
+
+        Args:
+            persist_dir: Directory for ChromaDB persistent storage.
+        """
+        self.persist_dir = persist_dir
+        self._client = None
+        self._collection = None
+
+    def _ensure_initialized(self):
+        """Lazy initialization of ChromaDB client and collection."""
+        if self._collection is not None:
+            return
+
+        chromadb = _get_chromadb()
+        Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
+
+        console.print(
+            f"[cyan]⟳ Initializing ChromaDB[/cyan] at {self.persist_dir}"
+        )
+
+        self._client = chromadb.PersistentClient(path=self.persist_dir)
+        self._collection = self._client.get_or_create_collection(
+            name=self.COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},  # Use cosine similarity
+        )
+
+        count = self._collection.count()
+        console.print(
+            f"[green]✓ Database ready[/green] — "
+            f"{count} criminal face(s) enrolled"
+        )
+
+    def enroll(
+        self,
+        criminal_id: str,
+        embedding: np.ndarray,
+        metadata: Optional[Dict[str, Any]] = None,
+        face_image: Optional[np.ndarray] = None,
+    ) -> bool:
+        """
+        Enroll a criminal's face embedding into the database.
+
+        Args:
+            criminal_id: Unique identifier for the criminal (e.g., "CRIM001").
+            embedding: 512-dim normalized ArcFace embedding.
+            metadata: Optional metadata dict (name, case_number, notes, etc.).
+                      Values must be strings, ints, floats, or bools (ChromaDB limitation).
+            face_image: Optional BGR face crop to store as base64 thumbnail.
+
+        Returns:
+            True if enrolled successfully.
+        """
+        self._ensure_initialized()
+
+        # Build metadata
+        meta = {
+            "criminal_id": criminal_id,
+            "enrolled_at": datetime.datetime.now().isoformat(),
+        }
+        if metadata:
+            # ChromaDB only supports str/int/float/bool metadata values
+            for k, v in metadata.items():
+                if isinstance(v, (str, int, float, bool)):
+                    meta[k] = v
+                else:
+                    meta[k] = str(v)
+
+        # Store a small base64 thumbnail for quick display
+        if face_image is not None:
+            try:
+                # Resize to small thumbnail (64x64) for storage efficiency
+                thumb = cv2.resize(face_image, (64, 64))
+                _, buffer = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                meta["thumbnail_b64"] = base64.b64encode(buffer).decode("utf-8")
+            except Exception:
+                pass  # Skip thumbnail on error
+
+        # Use upsert to handle re-enrollment
+        self._collection.upsert(
+            ids=[criminal_id],
+            embeddings=[embedding.tolist()],
+            metadatas=[meta],
+        )
+
+        return True
+
+    def search(
+        self,
+        query_embedding: np.ndarray,
+        top_k: int = 5,
+        threshold: Optional[float] = None,
+        metadata_filter: Optional[Dict[str, str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search the criminal database for faces similar to the query.
+
+        Args:
+            query_embedding: 512-dim normalized ArcFace embedding to search for.
+            top_k: Maximum number of results to return.
+            threshold: Minimum similarity threshold (0-1).
+                       Results below this are filtered out.
+                       Note: ChromaDB cosine distance = 1 - cosine_similarity.
+            metadata_filter: Optional ChromaDB where filter
+                             (e.g., {"name": "John"}).
+
+        Returns:
+            List of match dicts, each containing:
+                - criminal_id: str
+                - similarity: float (0-1, higher = more similar)
+                - distance: float (ChromaDB cosine distance)
+                - metadata: dict (name, case_number, etc.)
+        """
+        self._ensure_initialized()
+
+        query_kwargs = {
+            "query_embeddings": [query_embedding.tolist()],
+            "n_results": top_k,
+            "include": ["metadatas", "distances"],
+        }
+        if metadata_filter:
+            query_kwargs["where"] = metadata_filter
+
+        results = self._collection.query(**query_kwargs)
+
+        matches = []
+        if results and results["ids"] and results["ids"][0]:
+            for i, cid in enumerate(results["ids"][0]):
+                # ChromaDB cosine distance = 1 - cosine_similarity
+                distance = results["distances"][0][i]
+                similarity = 1.0 - distance
+
+                # Apply threshold filter
+                if threshold is not None and similarity < threshold:
+                    continue
+
+                meta = results["metadatas"][0][i] if results["metadatas"] else {}
+
+                matches.append({
+                    "criminal_id": cid,
+                    "similarity": round(similarity, 4),
+                    "distance": round(distance, 4),
+                    "metadata": meta,
+                })
+
+        return matches
+
+    def delete(self, criminal_id: str) -> bool:
+        """
+        Remove a criminal from the database.
+
+        Args:
+            criminal_id: ID of the criminal to remove.
+
+        Returns:
+            True if deleted.
+        """
+        self._ensure_initialized()
+        self._collection.delete(ids=[criminal_id])
+        return True
+
+    def get(self, criminal_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific criminal's record.
+
+        Args:
+            criminal_id: ID of the criminal.
+
+        Returns:
+            Dict with criminal data, or None if not found.
+        """
+        self._ensure_initialized()
+        result = self._collection.get(
+            ids=[criminal_id],
+            include=["metadatas", "embeddings"],
+        )
+        if result and result["ids"]:
+            return {
+                "criminal_id": result["ids"][0],
+                "metadata": result["metadatas"][0] if result["metadatas"] else {},
+                "has_embedding": result["embeddings"] is not None and len(result["embeddings"]) > 0,
+            }
+        return None
+
+    def count(self) -> int:
+        """Get total number of enrolled criminals."""
+        self._ensure_initialized()
+        return self._collection.count()
+
+    def list_all(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        List all enrolled criminals.
+
+        Args:
+            limit: Maximum number of records to return.
+
+        Returns:
+            List of criminal records with metadata.
+        """
+        self._ensure_initialized()
+        result = self._collection.get(
+            limit=limit,
+            include=["metadatas"],
+        )
+        records = []
+        if result and result["ids"]:
+            for i, cid in enumerate(result["ids"]):
+                meta = result["metadatas"][i] if result["metadatas"] else {}
+                records.append({
+                    "criminal_id": cid,
+                    "metadata": meta,
+                })
+        return records
+
+    def clear(self) -> int:
+        """
+        Delete ALL records from the database.
+
+        Returns:
+            Number of records deleted.
+        """
+        self._ensure_initialized()
+        count = self._collection.count()
+        # Recreate the collection to clear it
+        self._client.delete_collection(self.COLLECTION_NAME)
+        self._collection = self._client.get_or_create_collection(
+            name=self.COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},
+        )
+        return count
