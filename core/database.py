@@ -93,9 +93,10 @@ class FaceDatabase:
         embedding: np.ndarray,
         metadata: Optional[Dict[str, Any]] = None,
         face_image: Optional[np.ndarray] = None,
+        thumbnail: Optional[str] = None,
     ) -> bool:
         """
-        Enroll a criminal's face embedding into the database.
+        Enroll a new criminal face into the database.
 
         Args:
             criminal_id: Unique identifier for the criminal (e.g., "CRIM001").
@@ -103,6 +104,7 @@ class FaceDatabase:
             metadata: Optional metadata dict (name, case_number, notes, etc.).
                       Values must be strings, ints, floats, or bools (ChromaDB limitation).
             face_image: Optional BGR face crop to store as base64 thumbnail.
+            thumbnail: Optional pre-encoded base64 thumbnail string.
 
         Returns:
             True if enrolled successfully.
@@ -122,8 +124,10 @@ class FaceDatabase:
                 else:
                     meta[k] = str(v)
 
-        # Store a small base64 thumbnail for quick display
-        if face_image is not None:
+        # Store pre-encoded thumbnail or generate from face_image
+        if thumbnail:
+            meta["thumbnail_b64"] = thumbnail
+        elif face_image is not None:
             try:
                 # Resize to small thumbnail (64x64) for storage efficiency
                 thumb = cv2.resize(face_image, (64, 64))
