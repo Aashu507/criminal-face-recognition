@@ -271,14 +271,28 @@ with tab2:
             with st.spinner("Analyzing facial features & querying database..."):
                 t0 = time.perf_counter()
                 results = matcher.search_image(enhanced_bgr, top_k=3, use_adaface=use_adaface_opt)
+                target_frame = enhanced_bgr
+                used_raw_fallback = False
+                
+                # Automatic fallback: If enhanced image was over-processed / posterized, try original raw CCTV frame
+                if not results:
+                    results_raw = matcher.search_image(raw_bgr, top_k=3, use_adaface=use_adaface_opt)
+                    if results_raw:
+                        results = results_raw
+                        target_frame = raw_bgr
+                        used_raw_fallback = True
+                        
                 elapsed_ms = (time.perf_counter() - t0) * 1000
+                
+            if used_raw_fallback:
+                st.info("💡 **Adaptive Detection:** Enhanced frame had high-contrast filter edge effects; successfully detected and matched face on the original CCTV frame!")
                 
             st.write(f"Found **{len(results)}** face(s) in `{elapsed_ms:.1f} ms`")
             
             if not results:
                 st.warning("No faces detected in the image. Try adjusting the CCTV enhancement settings above.")
             else:
-                annotated_img = enhanced_bgr.copy()
+                annotated_img = target_frame.copy()
                 
                 for idx, res in enumerate(results):
                     face = res["face"]
@@ -291,8 +305,8 @@ with tab2:
                     st.caption(f"📐 **Head Pose Angles:** Yaw: `{pose.get('yaw', 0)}°` | Pitch: `{pose.get('pitch', 0)}°` | Roll: `{pose.get('roll', 0)}°` {'🚨 *Extreme Angle*' if pose.get('is_extreme') else '✅ *Normal Angle*'}")
                     
                     # Crop face
-                    x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(raw_bgr.shape[1], box[2]), min(raw_bgr.shape[0], box[3])
-                    face_crop = enhanced_bgr[y1:y2, x1:x2]
+                    x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(target_frame.shape[1], box[2]), min(target_frame.shape[0], box[3])
+                    face_crop = target_frame[y1:y2, x1:x2]
                     
                     c_crop, c_match = st.columns([1, 3])
                     with c_crop:
