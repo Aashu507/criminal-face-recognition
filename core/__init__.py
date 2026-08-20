@@ -24,6 +24,9 @@ from core.adaface_recognizer import AdaFaceRecognizer
 from core.tracker import FaceTracker, TrackedFace
 from core.stream_hub import StreamHub, CameraStream
 from core.alert_dispatcher import AlertDispatcher, IncidentAlert
+from core.anti_spoofing import AntiSpoofingDetector
+from core.hardware_optimizer import HardwareOptimizer
+from core.report_generator import ForensicReportGenerator
 
 __all__ = [
     "ImagePreprocessor",
@@ -41,4 +44,7 @@ __all__ = [
     "CameraStream",
     "AlertDispatcher",
     "IncidentAlert",
+    "AntiSpoofingDetector",
+    "HardwareOptimizer",
+    "ForensicReportGenerator",
 ]
