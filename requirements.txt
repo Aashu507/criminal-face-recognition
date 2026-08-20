@@ -1,0 +1,30 @@
+# ============================================================
+# Facial Recognition System — Dependencies
+# ============================================================
+# Install: pip install -r requirements.txt
+# Note: Install onnxruntime-gpu ONLY if you have an NVIDIA GPU.
+#        Otherwise, replace with: onnxruntime
+# ============================================================
+
+# Core — Face Recognition Engine
+insightface>=0.7.3
+onnxruntime-gpu>=1.17.0
+
+# Computer Vision
+opencv-python>=4.9.0
+Pillow>=10.0
+
+# Vector Database
+chromadb>=0.4.22
+
+# Utilities
+numpy<3
+python-dotenv>=1.0.0
+rich>=13.0
+psutil>=5.9.0
+
+# Web Dashboard
+streamlit>=1.30.0
+
+# Testing
+pytest>=8.0
