@@ -84,14 +84,36 @@ class AdaFaceRecognizer:
 
         quality_score = self.compute_quality_score(aligned_face)
 
-        # Extract base embedding
-        if detected_face is not None and getattr(detected_face, 'embedding', None) is not None:
-            raw_emb = detected_face.embedding
-        elif self.base_recognizer is not None:
-            raw_emb = self.base_recognizer.extract_embedding(aligned_face)
-        else:
-            # Fallback mock for unit testing
-            raw_emb = np.random.randn(512).astype(np.float32)
+        # Extract canonical 5-point aligned embedding with Test-Time Augmentation (TTA)
+        raw_emb = None
+        
+        # Check if underlying ArcFace model is accessible for sub-pixel aligned TTA
+        if (
+            self.base_recognizer is not None
+            and hasattr(self.base_recognizer, "detector")
+            and getattr(self.base_recognizer.detector, "_app", None) is not None
+        ):
+            rec_model = None
+            for m in self.base_recognizer.detector._app.models.values():
+                if hasattr(m, "get_feat"):
+                    rec_model = m
+                    break
+            if rec_model is not None:
+                try:
+                    feat1 = rec_model.get_feat(aligned_face).flatten()
+                    feat2 = rec_model.get_feat(cv2.flip(aligned_face, 1)).flatten()
+                    raw_emb = feat1 + feat2
+                except Exception:
+                    pass
+
+        if raw_emb is None:
+            if detected_face is not None and getattr(detected_face, "embedding", None) is not None:
+                raw_emb = detected_face.embedding
+            elif self.base_recognizer is not None and hasattr(self.base_recognizer, "extract_embedding"):
+                raw_emb = self.base_recognizer.extract_embedding(aligned_face)
+            else:
+                # Fallback mock for unit testing
+                raw_emb = np.random.randn(512).astype(np.float32)
 
         # Normalize embedding to unit L2 sphere: ||e||_2 = 1.0
         norm = np.linalg.norm(raw_emb)
