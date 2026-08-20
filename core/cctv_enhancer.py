@@ -103,6 +103,24 @@ class CCTVEnhancer:
             return self.unsharp_mask(resized, sigma=0.8)
         return face_crop
 
+    def suppress_specular_glare(self, image: np.ndarray, glare_threshold: int = 240) -> np.ndarray:
+        """
+        Suppresses harsh specular glare / spotlight reflections (forehead, cheek sheen)
+        common under Indian streetlamps and overhead CCTV lights.
+        """
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        glare_mask = cv2.threshold(gray, glare_threshold, 255, cv2.THRESH_BINARY)[1]
+        
+        if np.count_nonzero(glare_mask) == 0:
+            return image
+            
+        # Inpaint or blend over harsh blown-out specular highlights
+        inpaint_mask = cv2.dilate(glare_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
+        try:
+            return cv2.inpaint(image, inpaint_mask, inpaintRadius=2, flags=cv2.INPAINT_TELEA)
+        except Exception:
+            return image
+
     def enhance(
         self,
         image: np.ndarray,
@@ -110,11 +128,15 @@ class CCTVEnhancer:
         apply_clahe: bool = True,
         apply_denoise: bool = True,
         apply_sharpen: bool = True,
+        apply_glare_suppression: bool = False,
     ) -> np.ndarray:
         """
         Full CCTV enhancement pipeline.
         """
         result = image.copy()
+
+        if apply_glare_suppression:
+            result = self.suppress_specular_glare(result)
 
         if apply_gamma:
             result = self.auto_gamma_correction(result)
