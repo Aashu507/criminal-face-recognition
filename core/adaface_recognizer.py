@@ -125,10 +125,9 @@ class AdaFaceRecognizer:
         # Joint quality factor Q_joint = sqrt(q1 * q2)
         q_joint = float(np.sqrt(np.clip(quality1 * quality2, 0.1, 1.0)))
 
-        # In low-quality matches (q_joint < 0.6), apply adaptive margin softening
-        if q_joint < 0.60:
-            # AdaFace adaptive margin compensation
-            adaptive_sim = raw_sim * (0.85 + 0.15 * q_joint)
+        # For degraded images, apply AdaFace quality margin compensation
+        if q_joint < 0.60 and raw_sim > 0.0:
+            adaptive_sim = raw_sim * (1.0 + 0.05 * (1.0 - q_joint))
         else:
             adaptive_sim = raw_sim
 
