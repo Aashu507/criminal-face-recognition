@@ -139,12 +139,15 @@ st.markdown('<div class="main-header">Criminal Identification & Surveillance Sys
 st.markdown('<div class="sub-header">Optimized for Indian Face Demographics • CCTV Enhancement • Real-Time GPU Inference</div>', unsafe_allow_html=True)
 
 # Main Navigation Tabs
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🎥 Live Surveillance Camera",
     "🕵️ CCTV & Low-Res Image Search",
+    "📼 Video Footage Forensics",
     "📁 Criminal Database (Enrollment)",
-    "📊 System Diagnostics"
+    "📊 Diagnostics & Incident Reports"
 ])
+
+# (Tab 1, Tab 2 remain unchanged)
 
 # ==========================================
 # TAB 1: LIVE SURVEILLANCE CAMERA
@@ -303,9 +306,103 @@ with tab2:
                 st.image(cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB), caption="Identified Suspect Map", use_container_width=True)
 
 # ==========================================
-# TAB 3: CRIMINAL DATABASE MANAGEMENT
+# TAB 3: VIDEO FOOTAGE FORENSICS & RTSP
 # ==========================================
 with tab3:
+    st.markdown("### 📼 CCTV Video Forensics & Stream Scanner")
+    st.write("Scan recorded CCTV footage or live RTSP streams to auto-detect enrolled suspects and generate an interactive detection timeline.")
+
+    v_mode = st.radio("Surveillance Mode", ["📁 Upload CCTV Video Recording", "📡 Live RTSP / IP Camera Stream"], horizontal=True)
+
+    if v_mode == "📁 Upload CCTV Video Recording":
+        v_file = st.file_uploader("Upload Video Footage (.mp4, .avi, .mkv, .mov)", type=["mp4", "avi", "mkv", "mov"])
+        
+        c_step, c_max = st.columns(2)
+        with c_step:
+            frame_step = st.slider("Scan Step (Process every N-th frame)", min_value=1, max_value=30, value=5, help="5 = ~6 scans/sec for 30fps video. Higher = faster.")
+        with c_max:
+            max_sec = st.number_input("Max Duration to Scan (Seconds, 0 = Full Video)", min_value=0, value=60, step=10)
+
+        if v_file is not None:
+            import tempfile
+            from core.video_scanner import CCTVVideoScanner
+
+            if st.button("🚀 Start Video Forensics Scan", type="primary"):
+                # Write uploaded bytes to temp file for OpenCV VideoCapture
+                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                tfile.write(v_file.read())
+                tfile.flush()
+
+                scanner = CCTVVideoScanner(matcher, frame_step=frame_step, min_confidence=threshold)
+                
+                prog_bar = st.progress(0, text="Initializing video scan...")
+                feed_placeholder = st.empty()
+                
+                matched_events = []
+                total_scanned = 0
+                t0_scan = time.perf_counter()
+
+                cap = cv2.VideoCapture(tfile.name)
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 100
+                fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+                cap.release()
+
+                max_f = int(max_sec * fps) if max_sec > 0 else None
+
+                for f_idx, t_sec, annotated_f, events in scanner.scan_video_stream(tfile.name, max_frames=max_f):
+                    total_scanned += 1
+                    matched_events.extend(events)
+
+                    pct = min(1.0, f_idx / (max_f or total_frames))
+                    prog_bar.progress(pct, text=f"Scanning frame {f_idx} (Time: {CCTVVideoScanner.format_timestamp(t_sec)}) — {len(matched_events)} matches")
+
+                    if events or total_scanned % 10 == 0:
+                        feed_placeholder.image(cv2.cvtColor(annotated_f, cv2.COLOR_BGR2RGB), caption=f"Forensic Feed — Frame {f_idx}", use_container_width=True)
+
+                prog_bar.empty()
+                scan_duration = time.perf_counter() - t0_scan
+                st.success(f"✅ Video Forensics Scan Complete in `{scan_duration:.1f}s`! Scanned `{total_scanned}` frames. Detected `{len(matched_events)}` suspect match events.")
+
+                # Match Timeline
+                if matched_events:
+                    st.markdown("#### 🚨 Suspect Detection Timeline")
+                    for ev in matched_events:
+                        st.markdown(f"""
+                        <div class="suspect-box">
+                            ⏱️ <b>Timestamp:</b> <code>{ev.formatted_time}</code> (Frame #{ev.frame_number})<br>
+                            🚨 <b>Identified:</b> {ev.criminal_name} (ID: <code>{ev.criminal_id}</code>) — Match: <b>{ev.similarity*100:.1f}%</b>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if ev.face_crop_bgr.size > 0:
+                            st.image(cv2.cvtColor(ev.face_crop_bgr, cv2.COLOR_BGR2RGB), caption=f"CCTV Crop at {ev.formatted_time}", width=100)
+                else:
+                    st.info("No enrolled criminals were detected in this footage.")
+
+    else:
+        rtsp_url = st.text_input("Enter RTSP Stream URL", placeholder="rtsp://username:password@192.168.1.100:554/stream1")
+        st.caption("Example: `rtsp://admin:pass@192.168.1.50:554/h264Preview_01_main` or `0` for default local USB/webcam")
+        
+        if st.button("Connect & Start Live Stream Inspection"):
+            if not rtsp_url:
+                st.error("Please enter a valid RTSP URL.")
+            else:
+                st.info(f"Connecting to stream {rtsp_url}...")
+                stream_src = int(rtsp_url) if rtsp_url.isdigit() else rtsp_url
+                cap = cv2.VideoCapture(stream_src)
+                if not cap.isOpened():
+                    st.error("Failed to connect to video stream. Verify camera IP, port, and network credentials.")
+                else:
+                    st.success("Connected to stream. Sampling live frames...")
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret:
+                        results = matcher.search_image(frame, top_k=2)
+                        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Live RTSP Snapshot — {len(results)} face(s) found", use_container_width=True)
+
+# ==========================================
+# TAB 4: CRIMINAL DATABASE MANAGEMENT
+# ==========================================
+with tab4:
     st.markdown("### 📁 Criminal Registry Management")
     
     enroll_col, view_col = st.columns([1, 1])
@@ -377,10 +474,10 @@ with tab3:
                         st.rerun()
 
 # ==========================================
-# TAB 4: SYSTEM DIAGNOSTICS & BENCHMARKS
+# TAB 5: SYSTEM DIAGNOSTICS & DOSSIER EXPORT
 # ==========================================
-with tab4:
-    st.markdown("### 📊 Hardware Diagnostics & Engine Benchmarks")
+with tab5:
+    st.markdown("### 📊 Hardware Diagnostics & Forensic Dossier Export")
     
     col_bench, col_sys = st.columns(2)
     
@@ -403,6 +500,25 @@ with tab4:
                 st.write(f"- Maximum latency spike: `{max_lat:.2f} ms`")
                 st.write(f"- Throughput capability: `~{1000/avg_lat:.1f} FPS`")
                 
+        st.markdown("---")
+        st.markdown("#### 📄 Forensic Audit Report Export")
+        st.caption("Generate an official audit report of all current criminal records for police records or investigation logs.")
+        
+        all_recs = db.get_all(include_thumbnails=False)
+        report_json = json.dumps({
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "system_engine": "InsightFace ArcFace 512-dim + SCRFD 10G",
+            "enrolled_count": len(all_recs),
+            "records": all_recs
+        }, indent=2)
+        
+        st.download_button(
+            label="📥 Download Criminal Registry Audit Log (JSON)",
+            data=report_json,
+            file_name=f"criminal_registry_audit_{time.strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+                
     with col_sys:
         st.markdown("#### 📦 Loaded Model Specifications")
         st.write("- **Face Detector:** SCRFD 10G (InsightFace `buffalo_l`)")
@@ -410,3 +526,4 @@ with tab4:
         st.write("- **Landmark Extractors:** 2D 106-point & 3D 68-point models")
         st.write("- **Vector Database:** ChromaDB (Cosine Space `hnsw:space: cosine`)")
         st.write(f"- **VRAM / Process RAM:** `{ram_used_gb:.2f} GB / {ram_total_gb:.2f} GB`")
+
