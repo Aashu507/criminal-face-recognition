@@ -499,23 +499,18 @@ class FaceMatcher:
             refined_matches = []
             for m in raw_matches:
                 meta = m.get("metadata", {})
-                raw_sim = m.get("similarity", 0.0)
+                raw_sim = float(m.get("similarity", 0.0))
                 
-                if use_adaface:
-                    # Apply quality-adaptive similarity scaling
-                    adapted_sim = self.adaface.adaptive_similarity(
-                        emb,
-                        emb,  # Self dot product scaled by quality
-                        quality1=q_score,
-                        quality2=1.0
-                    ) * raw_sim
+                # AdaFace quality compensation: Ensure quality score Q does not artificially dampen valid match
+                if use_adaface and q_score < 0.60:
+                    adapted_sim = raw_sim * (1.0 + 0.05 * (1.0 - q_score))
                 else:
                     adapted_sim = raw_sim
 
                 refined_matches.append({
                     "id": m.get("criminal_id") or m.get("id"),
                     "name": meta.get("name", "Unknown"),
-                    "similarity": round(adapted_sim, 4),
+                    "similarity": round(float(np.clip(adapted_sim, -1.0, 1.0)), 4),
                     "metadata": meta
                 })
 
