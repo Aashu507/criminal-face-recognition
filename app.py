@@ -117,6 +117,12 @@ with st.sidebar:
     )
     matcher.threshold = threshold
     
+    use_adaface_opt = st.checkbox(
+        "🧠 AdaFace Quality-Adaptive Mode",
+        value=True,
+        help="Adapts neural margins dynamically for low-resolution/blurry CCTV crops."
+    )
+    
     st.markdown("---")
     st.markdown("#### 🖥️ Hardware Telemetry")
     
@@ -228,7 +234,7 @@ with tab2:
         
         # Enhancement controls
         st.markdown("#### 🛠️ CCTV Enhancement Pipeline")
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             use_gamma = st.checkbox("Auto Gamma (Night Vision Boost)", value=True)
         with c2:
@@ -237,13 +243,16 @@ with tab2:
             use_denoise = st.checkbox("Bilateral Noise Filter", value=True)
         with c4:
             use_sharpen = st.checkbox("Unsharp Detail Sharpening", value=True)
+        with c5:
+            use_glare = st.checkbox("Specular Glare Reducer", value=False)
             
         enhanced_bgr = enhancer.enhance(
             raw_bgr,
             apply_gamma=use_gamma,
             apply_clahe=use_clahe,
             apply_denoise=use_denoise,
-            apply_sharpen=use_sharpen
+            apply_sharpen=use_sharpen,
+            apply_glare_suppression=use_glare
         )
         
         # Side by side comparison
@@ -259,7 +268,7 @@ with tab2:
         if st.button("Run Suspect Identification on Enhanced Frame", type="primary"):
             with st.spinner("Analyzing facial features & querying database..."):
                 t0 = time.perf_counter()
-                results = matcher.search_image(enhanced_bgr, top_k=3)
+                results = matcher.search_image(enhanced_bgr, top_k=3, use_adaface=use_adaface_opt)
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 
             st.write(f"Found **{len(results)}** face(s) in `{elapsed_ms:.1f} ms`")
@@ -273,8 +282,11 @@ with tab2:
                     face = res["face"]
                     box = [int(v) for v in face.bbox]
                     matches = res["matches"]
+                    q_score = res.get("quality_score", 0.8)
+                    pose = res.get("pose", {})
                     
-                    st.markdown(f"##### 👤 Face #{idx + 1} (Quality Score: `{face.det_score * 100:.1f}%` • Est. Age: `{face.age}` • Gender: `{face.gender}`)")
+                    st.markdown(f"##### 👤 Face #{idx + 1} (Confidence: `{face.confidence * 100:.1f}%` • AdaFace Quality Q: `{q_score*100:.1f}%` • Est. Age: `{face.age}` • Gender: `{face.gender}`)")
+                    st.caption(f"📐 **Head Pose Angles:** Yaw: `{pose.get('yaw', 0)}°` | Pitch: `{pose.get('pitch', 0)}°` | Roll: `{pose.get('roll', 0)}°` {'🚨 *Extreme Angle*' if pose.get('is_extreme') else '✅ *Normal Angle*'}")
                     
                     # Crop face
                     x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(raw_bgr.shape[1], box[2]), min(raw_bgr.shape[0], box[3])
