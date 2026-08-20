@@ -18,6 +18,7 @@ from core.recognizer import FaceRecognizer
 from core.database import FaceDatabase
 from core.matcher import FaceMatcher
 from core.cctv_enhancer import CCTVEnhancer
+from core.video_scanner import CCTVVideoScanner
 
 __all__ = [
     "ImagePreprocessor",
@@ -26,4 +27,5 @@ __all__ = [
     "FaceDatabase",
     "FaceMatcher",
     "CCTVEnhancer",
+    "CCTVVideoScanner",
 ]
