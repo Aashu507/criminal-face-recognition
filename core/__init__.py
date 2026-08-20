@@ -21,6 +21,9 @@ from core.cctv_enhancer import CCTVEnhancer
 from core.video_scanner import CCTVVideoScanner
 from core.pose_aligner import PoseAligner
 from core.adaface_recognizer import AdaFaceRecognizer
+from core.tracker import FaceTracker, TrackedFace
+from core.stream_hub import StreamHub, CameraStream
+from core.alert_dispatcher import AlertDispatcher, IncidentAlert
 
 __all__ = [
     "ImagePreprocessor",
@@ -32,4 +35,10 @@ __all__ = [
     "CCTVVideoScanner",
     "PoseAligner",
     "AdaFaceRecognizer",
+    "FaceTracker",
+    "TrackedFace",
+    "StreamHub",
+    "CameraStream",
+    "AlertDispatcher",
+    "IncidentAlert",
 ]
