@@ -52,7 +52,7 @@ class FaceDatabase:
 
     COLLECTION_NAME = "criminal_faces"
 
-    def __init__(self, persist_dir: str = "./chroma_db"):
+    def __init__(self, persist_dir: str = "./data/chromadb"):
         """
         Initialize the face database.
 
