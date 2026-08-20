@@ -153,7 +153,7 @@ class FaceDetector:
         insightface = _get_insightface()
 
         console.print(
-            f"[cyan]⟳ Initializing InsightFace[/cyan] "
+            f"[cyan][*] Initializing InsightFace[/cyan] "
             f"(model={self.model_name}, gpu={self.gpu_id}, det_size={self.det_size[0]})"
         )
 
@@ -173,13 +173,13 @@ class FaceDetector:
             # Report which provider is active
             active_provider = "GPU (CUDA)" if self.gpu_id >= 0 else "CPU"
             console.print(
-                f"[green]✓ InsightFace ready[/green] — "
+                f"[green][+] InsightFace ready[/green] — "
                 f"Provider: {active_provider}, "
                 f"Models: {len(self._app.models)} loaded"
             )
 
         except Exception as e:
-            console.print(f"[red]✗ InsightFace initialization failed:[/red] {e}")
+            console.print(f"[red][-] InsightFace initialization failed:[/red] {e}")
             if "CUDA" in str(e):
                 console.print(
                     "[yellow]  Hint: Ensure CUDA toolkit and onnxruntime-gpu "
