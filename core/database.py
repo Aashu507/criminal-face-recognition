@@ -72,7 +72,7 @@ class FaceDatabase:
         Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
 
         console.print(
-            f"[cyan]⟳ Initializing ChromaDB[/cyan] at {self.persist_dir}"
+            f"[cyan][*] Initializing ChromaDB[/cyan] at {self.persist_dir}"
         )
 
         self._client = chromadb.PersistentClient(path=self.persist_dir)
@@ -83,7 +83,7 @@ class FaceDatabase:
 
         count = self._collection.count()
         console.print(
-            f"[green]✓ Database ready[/green] — "
+            f"[green][+] Database ready[/green] — "
             f"{count} criminal face(s) enrolled"
         )
 
