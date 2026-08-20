@@ -72,7 +72,7 @@ class FaceMatcher:
             else float(os.getenv("SIMILARITY_THRESHOLD", "0.45"))
         )
         self.top_k = top_k or int(os.getenv("TOP_K", "5"))
-        self.db_dir = db_dir or os.getenv("CHROMA_DB_DIR", "./chroma_db")
+        self.db_dir = db_dir or os.getenv("CHROMA_DB_DIR", "./data/chromadb")
 
         # Initialize components (lazy — actual model loading happens on first use)
         self.preprocessor = ImagePreprocessor()
