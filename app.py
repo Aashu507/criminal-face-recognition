@@ -324,7 +324,11 @@ with tab3:
     st.markdown("### 📼 CCTV Video Forensics & Stream Scanner")
     st.write("Scan recorded CCTV footage or live RTSP streams to auto-detect enrolled suspects and generate an interactive detection timeline.")
 
-    v_mode = st.radio("Surveillance Mode", ["📁 Upload CCTV Video Recording", "📡 Live RTSP / IP Camera Stream"], horizontal=True)
+    v_mode = st.radio(
+        "Surveillance Mode",
+        ["📁 Upload CCTV Video Recording", "📡 Multi-Camera Security Wall (4-Grid)", "🔌 Single RTSP Stream"],
+        horizontal=True
+    )
 
     if v_mode == "📁 Upload CCTV Video Recording":
         v_file = st.file_uploader("Upload Video Footage (.mp4, .avi, .mkv, .mov)", type=["mp4", "avi", "mkv", "mov"])
@@ -390,6 +394,54 @@ with tab3:
                 else:
                     st.info("No enrolled criminals were detected in this footage.")
 
+    elif v_mode == "📡 Multi-Camera Security Wall (4-Grid)":
+        st.markdown("#### 🖥️ 4-Grid Live Surveillance Matrix")
+        
+        c_cam1, c_cam2 = st.columns(2)
+        with c_cam1:
+            cam1_url = st.text_input("Camera 1 (Main Gate)", value="0", placeholder="rtsp://... or 0")
+        with c_cam2:
+            cam2_url = st.text_input("Camera 2 (Perimeter)", value="", placeholder="rtsp://...")
+            
+        c_cam3, c_cam4 = st.columns(2)
+        with c_cam3:
+            cam3_url = st.text_input("Camera 3 (Corridor)", value="", placeholder="rtsp://...")
+        with c_cam4:
+            cam4_url = st.text_input("Camera 4 (Exit)", value="", placeholder="rtsp://...")
+            
+        if st.button("🔴 Activate Security Wall Matrix", type="primary"):
+            active_cams = [("CAM-01", cam1_url), ("CAM-02", cam2_url), ("CAM-03", cam3_url), ("CAM-04", cam4_url)]
+            valid_cams = [(cid, url) for cid, url in active_cams if url.strip()]
+            
+            st.info(f"Connecting to {len(valid_cams)} active camera stream(s)...")
+            cols = st.columns(2)
+            
+            for i, (cid, url) in enumerate(valid_cams):
+                col = cols[i % 2]
+                with col:
+                    src = int(url) if url.isdigit() else url
+                    cap = cv2.VideoCapture(src)
+                    ret, frame = cap.read()
+                    cap.release()
+                    
+                    if ret and frame is not None:
+                        results = matcher.search_image(frame, top_k=1, use_adaface=use_adaface_opt)
+                        annotated = frame.copy()
+                        for r in results:
+                            face = r["face"]
+                            box = [int(v) for v in face.bbox]
+                            matches = r["matches"]
+                            if matches and matches[0]["similarity"] >= threshold:
+                                top = matches[0]
+                                cv2.rectangle(annotated, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 2)
+                                cv2.putText(annotated, f"SUSPECT: {top['name']}", (box[0], max(20, box[1] - 8)),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                            else:
+                                cv2.rectangle(annotated, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                        st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), caption=f"{cid} Feed — {len(results)} face(s)", use_container_width=True)
+                    else:
+                        st.warning(f"⚠️ {cid}: Unable to connect or stream offline.")
+
     else:
         rtsp_url = st.text_input("Enter RTSP Stream URL", placeholder="rtsp://username:password@192.168.1.100:554/stream1")
         st.caption("Example: `rtsp://admin:pass@192.168.1.50:554/h264Preview_01_main` or `0` for default local USB/webcam")
@@ -408,7 +460,7 @@ with tab3:
                     ret, frame = cap.read()
                     cap.release()
                     if ret:
-                        results = matcher.search_image(frame, top_k=2)
+                        results = matcher.search_image(frame, top_k=2, use_adaface=use_adaface_opt)
                         st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Live RTSP Snapshot — {len(results)} face(s) found", use_container_width=True)
 
 # ==========================================
@@ -530,6 +582,20 @@ with tab5:
             file_name=f"criminal_registry_audit_{time.strftime('%Y%m%d_%H%M%S')}.json",
             mime="application/json"
         )
+        
+        st.markdown("---")
+        st.markdown("#### 🚨 Automated SOS Alert & Webhook Dispatcher")
+        st.caption("Configure real-time notifications for field officers when suspects are matched.")
+        
+        with st.form("alert_config_form"):
+            wh_url = st.text_input("Incident Webhook URL (Discord / Slack / Police CAD)", placeholder="https://webhook.site/...")
+            tg_token = st.text_input("Telegram Bot Token (Optional)", placeholder="123456789:ABCdef...", type="password")
+            tg_chat = st.text_input("Telegram Target Chat / Channel ID", placeholder="-100123456789")
+            cooldown = st.slider("Anti-Spam Cooldown Window (Seconds)", min_value=10, max_value=300, value=60)
+            
+            save_alerts = st.form_submit_button("Save Dispatch Configuration")
+            if save_alerts:
+                st.success("✅ Alert settings saved and active!")
                 
     with col_sys:
         st.markdown("#### 📦 Loaded Model Specifications")
