@@ -253,19 +253,40 @@ class FaceDatabase:
         Returns:
             List of criminal records with metadata.
         """
+        return self.get_all(include_thumbnails=False, limit=limit)
+
+    def get_all(self, include_thumbnails: bool = True, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Retrieve all enrolled criminal records.
+
+        Args:
+            include_thumbnails: Whether to retain base64 thumbnails in records.
+            limit: Maximum number of records to return.
+
+        Returns:
+            List of dicts with 'id', 'name', 'criminal_id', 'metadata', 'thumbnail'.
+        """
         self._ensure_initialized()
-        result = self._collection.get(
-            limit=limit,
-            include=["metadatas"],
-        )
+        kwargs = {"include": ["metadatas"]}
+        if limit:
+            kwargs["limit"] = limit
+
+        result = self._collection.get(**kwargs)
         records = []
         if result and result["ids"]:
             for i, cid in enumerate(result["ids"]):
-                meta = result["metadatas"][i] if result["metadatas"] else {}
-                records.append({
+                meta = dict(result["metadatas"][i]) if result["metadatas"] else {}
+                name = meta.get("name", cid)
+                thumb = meta.get("thumbnail_b64") or meta.get("thumbnail", "")
+
+                rec = {
+                    "id": cid,
                     "criminal_id": cid,
+                    "name": name,
                     "metadata": meta,
-                })
+                    "thumbnail": thumb if include_thumbnails else None,
+                }
+                records.append(rec)
         return records
 
     def clear(self) -> int:
