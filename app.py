@@ -137,7 +137,13 @@ with st.sidebar:
     st.progress(cpu_usage / 100, text=f"CPU: {cpu_usage:.1f}%")
     st.progress(ram.percent / 100, text=f"RAM: {ram_used_gb:.1f} / {ram_total_gb:.1f} GB ({ram.percent}%)")
     
-    st.info(f"💾 **Enrolled Suspects:** {db.count()}")
+    suspect_count = db.count()
+    st.info(f"💾 **Enrolled Suspects:** {suspect_count}")
+    
+    if st.button("🔄 Reload Suspect Database", use_container_width=True):
+        st.cache_resource.clear()
+        st.rerun()
+        
     st.caption("🔒 Runs 100% locally. Zero cloud data leaks.")
 
 # ==========================================
