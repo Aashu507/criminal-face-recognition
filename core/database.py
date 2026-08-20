@@ -146,9 +146,15 @@ class FaceDatabase:
             meta["thumbnail_b64"] = thumbnail
         elif face_image is not None:
             try:
-                # Resize to small thumbnail (64x64) for storage efficiency
-                thumb = cv2.resize(face_image, (64, 64))
-                _, buffer = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                # Resize to HD studio thumbnail (256x256) with 95% JPEG quality for crisp UI display
+                h, w = face_image.shape[:2]
+                max_dim = max(h, w)
+                if max_dim > 256:
+                    scale = 256.0 / max_dim
+                    thumb = cv2.resize(face_image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                else:
+                    thumb = face_image
+                _, buffer = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 95])
                 meta["thumbnail_b64"] = base64.b64encode(buffer).decode("utf-8")
             except Exception:
                 pass  # Skip thumbnail on error
