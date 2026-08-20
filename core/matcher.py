@@ -12,7 +12,7 @@ Supports both:
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 import cv2
 import numpy as np
@@ -24,6 +24,8 @@ from core.preprocessor import ImagePreprocessor
 from core.detector import FaceDetector
 from core.recognizer import FaceRecognizer
 from core.database import FaceDatabase
+from core.pose_aligner import PoseAligner
+from core.adaface_recognizer import AdaFaceRecognizer
 
 console = Console()
 
@@ -81,6 +83,8 @@ class FaceMatcher:
         )
         self.recognizer = FaceRecognizer(detector=self.detector)
         self.database = FaceDatabase(persist_dir=self.db_dir)
+        self.pose_aligner = PoseAligner()
+        self.adaface = AdaFaceRecognizer(base_recognizer=self.recognizer, pose_aligner=self.pose_aligner)
 
     def enroll_from_image(
         self,
@@ -437,3 +441,142 @@ class FaceMatcher:
 
         console.print(table)
         console.print()
+
+    @property
+    def db(self):
+        return self.database
+
+    @property
+    def threshold(self) -> float:
+        return self.similarity_threshold
+
+    @threshold.setter
+    def threshold(self, val: float):
+        self.similarity_threshold = val
+
+    def search_image(
+        self,
+        image_bgr: np.ndarray,
+        top_k: int = 3,
+        use_adaface: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Detects all faces in a BGR image, estimates pose, calculates AdaFace quality,
+        and queries ChromaDB for suspect matches.
+
+        Returns list of dicts:
+        [
+            {
+                "face": DetectedFace,
+                "matches": [{"id": ..., "name": ..., "similarity": ...}],
+                "pose": {"yaw": ..., "pitch": ..., "roll": ...},
+                "quality_score": 0.85
+            },
+            ...
+        ]
+        """
+        faces = self.detector.detect(image_bgr)
+        results = []
+
+        for face in faces:
+            # 5-Point pose angle estimation
+            pose = self.pose_aligner.estimate_pose_angles(face.landmarks)
+
+            # AdaFace Quality calculation & adaptive embedding
+            emb, q_score, telemetry = self.adaface.extract_adaptive_embedding(
+                image_bgr,
+                landmarks=face.landmarks,
+                detected_face=face
+            )
+
+            # Query database
+            raw_matches = self.database.search(
+                query_embedding=emb,
+                top_k=top_k,
+                threshold=0.0  # Return raw candidates to apply adaptive similarity
+            )
+
+            refined_matches = []
+            for m in raw_matches:
+                meta = m.get("metadata", {})
+                raw_sim = m.get("similarity", 0.0)
+                
+                if use_adaface:
+                    # Apply quality-adaptive similarity scaling
+                    adapted_sim = self.adaface.adaptive_similarity(
+                        emb,
+                        emb,  # Self dot product scaled by quality
+                        quality1=q_score,
+                        quality2=1.0
+                    ) * raw_sim
+                else:
+                    adapted_sim = raw_sim
+
+                refined_matches.append({
+                    "id": m.get("criminal_id") or m.get("id"),
+                    "name": meta.get("name", "Unknown"),
+                    "similarity": round(adapted_sim, 4),
+                    "metadata": meta
+                })
+
+            # Sort by similarity descending
+            refined_matches.sort(key=lambda x: x["similarity"], reverse=True)
+
+            results.append({
+                "face": face,
+                "matches": refined_matches[:top_k],
+                "pose": pose,
+                "quality_score": round(q_score, 3)
+            })
+
+        return results
+
+    def enroll_image(
+        self,
+        image_bgr: np.ndarray,
+        criminal_id: str,
+        name: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Tuple[bool, str]:
+        """
+        Enrolls a criminal into ChromaDB directly from a BGR numpy image.
+        """
+        faces = self.detector.detect(image_bgr)
+        if not faces:
+            return False, "No face detected in the provided mugshot photo."
+
+        face = faces[0]  # Primary face
+        emb, q_score, _ = self.adaface.extract_adaptive_embedding(
+            image_bgr,
+            landmarks=face.landmarks,
+            detected_face=face
+        )
+
+        # Generate base64 thumbnail
+        box = [int(v) for v in face.bbox]
+        x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(image_bgr.shape[1], box[2]), min(image_bgr.shape[0], box[3])
+        face_crop = image_bgr[y1:y2, x1:x2]
+        
+        thumbnail_b64 = None
+        if face_crop.size > 0:
+            thumb_resized = cv2.resize(face_crop, (100, 100))
+            _, buf = cv2.imencode(".jpg", thumb_resized)
+            import base64
+            thumbnail_b64 = base64.b64encode(buf).decode("utf-8")
+
+        enroll_meta = metadata or {}
+        enroll_meta["name"] = name
+        enroll_meta["quality_score"] = float(q_score)
+
+        success = self.database.enroll(
+            criminal_id=criminal_id,
+            embedding=emb,
+            metadata=enroll_meta,
+            thumbnail=thumbnail_b64
+        )
+
+        if success:
+            return True, f"Successfully enrolled {name} (ID: {criminal_id}) with Quality Score: {q_score*100:.1f}%"
+        else:
+            return False, f"Failed to save record to ChromaDB for ID: {criminal_id}"
+
