@@ -124,7 +124,7 @@ class FaceDetector:
         model_name: str = "buffalo_l",
         gpu_id: int = 0,
         det_size: int = 640,
-        det_thresh: float = 0.5,
+        det_thresh: float = 0.35,
     ):
         """
         Initialize the face detector.
@@ -194,7 +194,7 @@ class FaceDetector:
         extract_crops: bool = True,
     ) -> List[DetectedFace]:
         """
-        Detect all faces in an image.
+        Detect all faces in an image with multi-pass robustness for degraded/artistic inputs.
 
         Args:
             image: BGR numpy array (OpenCV format).
@@ -206,8 +206,14 @@ class FaceDetector:
         """
         self._ensure_initialized()
 
-        # Run InsightFace detection + analysis
+        # Pass 1: Standard detection
         raw_faces = self._app.get(image, max_num=max_faces)
+
+        # Pass 2: If no faces found, retry with slightly smoothed/bilateral image to remove high-frequency edge noise
+        if not raw_faces and image is not None and image.size > 0:
+            import cv2
+            smoothed = cv2.GaussianBlur(image, (3, 3), 0)
+            raw_faces = self._app.get(smoothed, max_num=max_faces)
 
         if not raw_faces:
             return []
