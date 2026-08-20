@@ -190,7 +190,7 @@ class FaceMatcher:
             return {"success": False, "error": "No image files found in directory"}
 
         console.print(
-            f"\n[cyan]⟳ Enrolling {len(image_files)} images from[/cyan] {directory}\n"
+            f"\n[cyan][*] Enrolling {len(image_files)} images from[/cyan] {directory}\n"
         )
 
         results = {"total": len(image_files), "enrolled": 0, "failed": 0, "details": []}
@@ -199,7 +199,7 @@ class FaceMatcher:
             criminal_id = img_path.stem if id_from_filename else f"CRIM{i:04d}"
 
             console.print(
-                f"  [{i}/{len(image_files)}] {img_path.name} → {criminal_id}",
+                f"  [{i}/{len(image_files)}] {img_path.name} -> {criminal_id}",
                 end=" ",
             )
 
@@ -212,13 +212,13 @@ class FaceMatcher:
             if result["success"]:
                 results["enrolled"] += 1
                 console.print(
-                    f"[green]✓[/green] "
+                    f"[green][+][/green] "
                     f"(conf={result['confidence']}, "
                     f"quality={result['quality']['quality_score']})"
                 )
             else:
                 results["failed"] += 1
-                console.print(f"[red]✗ {result['error']}[/red]")
+                console.print(f"[red][-] {result['error']}[/red]")
 
             results["details"].append(result)
 
@@ -363,7 +363,7 @@ class FaceMatcher:
             result: Result dict from search_from_image() or search_from_frame().
         """
         if not result.get("success"):
-            console.print(f"[red]✗ Search failed:[/red] {result.get('error')}")
+            console.print(f"[red][-] Search failed:[/red] {result.get('error')}")
             return
 
         console.print(
