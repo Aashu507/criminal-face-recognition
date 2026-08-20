@@ -219,15 +219,19 @@ class FaceDetector:
             if det_score < self.det_thresh:
                 continue
 
-            # Extract cropped face region
+            # Extract cropped face region with 15% margin for well-framed, recognizable portraits
             face_crop = None
             if extract_crops:
                 bbox = face.bbox.astype(int)
                 h, w = image.shape[:2]
-                x1 = max(0, bbox[0])
-                y1 = max(0, bbox[1])
-                x2 = min(w, bbox[2])
-                y2 = min(h, bbox[3])
+                bw = bbox[2] - bbox[0]
+                bh = bbox[3] - bbox[1]
+                pad_x = int(bw * 0.15)
+                pad_y = int(bh * 0.15)
+                x1 = max(0, bbox[0] - pad_x)
+                y1 = max(0, bbox[1] - pad_y)
+                x2 = min(w, bbox[2] + pad_x)
+                y2 = min(h, bbox[3] + pad_y)
                 if x2 > x1 and y2 > y1:
                     face_crop = image[y1:y2, x1:x2].copy()
 
