@@ -552,15 +552,23 @@ class FaceMatcher:
             detected_face=face
         )
 
-        # Generate base64 thumbnail
+        # Generate high-definition studio thumbnail (256x256) with 15% margin
         box = [int(v) for v in face.bbox]
-        x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(image_bgr.shape[1], box[2]), min(image_bgr.shape[0], box[3])
+        h_img, w_img = image_bgr.shape[:2]
+        bw = box[2] - box[0]
+        bh = box[3] - box[1]
+        pad_x = int(bw * 0.15)
+        pad_y = int(bh * 0.15)
+        x1 = max(0, box[0] - pad_x)
+        y1 = max(0, box[1] - pad_y)
+        x2 = min(w_img, box[2] + pad_x)
+        y2 = min(h_img, box[3] + pad_y)
         face_crop = image_bgr[y1:y2, x1:x2]
         
         thumbnail_b64 = None
         if face_crop.size > 0:
-            thumb_resized = cv2.resize(face_crop, (100, 100))
-            _, buf = cv2.imencode(".jpg", thumb_resized)
+            thumb_resized = cv2.resize(face_crop, (256, 256), interpolation=cv2.INTER_AREA)
+            _, buf = cv2.imencode(".jpg", thumb_resized, [cv2.IMWRITE_JPEG_QUALITY, 95])
             import base64
             thumbnail_b64 = base64.b64encode(buf).decode("utf-8")
 
