@@ -110,12 +110,12 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("#### ⚙️ Recognition Settings")
     threshold = st.slider(
-        "Match Confidence Threshold",
+        "Similarity Threshold",
         min_value=0.20,
         max_value=0.90,
-        value=0.45,
+        value=0.38,
         step=0.01,
-        help="Higher = stricter matches. Recommended for Indian datasets: 0.45"
+        help="Higher = stricter matches. Recommended for surveillance/CCTV: 0.38"
     )
     matcher.threshold = threshold
     
@@ -317,16 +317,31 @@ with tab2:
                         if matches and matches[0]["similarity"] >= threshold:
                             top_m = matches[0]
                             st.error(f"🚨 **CRIMINAL MATCH:** {top_m['name']} (ID: {top_m['id']}) — **{top_m['similarity']*100:.1f}% Match**")
+                            if "crime_history" in top_m.get("metadata", {}):
+                                st.caption(f"📋 **Dossier:** {top_m['metadata']['crime_history']}")
                             
                             # Show all top candidates
+                            st.markdown("**Top Suspect Candidates:**")
                             for m in matches:
-                                st.write(f"- Candidate `{m['id']}` - **{m['name']}**: Similarity `{m['similarity']:.3f}`")
+                                st.write(f"- Candidate `{m['id']}` - **{m['name']}**: Similarity `{m['similarity']*100:.1f}%`")
                             
                             cv2.rectangle(annotated_img, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 2)
                             cv2.putText(annotated_img, f"{top_m['name']} ({top_m['similarity']:.2f})", (box[0], max(20, box[1] - 8)),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                        elif matches and matches[0]["similarity"] >= 0.28:
+                            top_m = matches[0]
+                            st.warning(f"⚠️ **PROBABLE SUSPECT LEAD:** {top_m['name']} (ID: {top_m['id']}) — **{top_m['similarity']*100:.1f}% Match** *(Below strict threshold `{threshold:.2f}`)*")
+                            if "crime_history" in top_m.get("metadata", {}):
+                                st.caption(f"📋 **Dossier:** {top_m['metadata']['crime_history']}")
+                            
+                            for m in matches:
+                                st.write(f"- Candidate `{m['id']}` - **{m['name']}**: Similarity `{m['similarity']*100:.1f}%`")
+                            
+                            cv2.rectangle(annotated_img, (box[0], box[1]), (box[2], box[3]), (0, 165, 255), 2)
+                            cv2.putText(annotated_img, f"Lead: {top_m['name']} ({top_m['similarity']:.2f})", (box[0], max(20, box[1] - 8)),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
                         else:
-                            st.success("✅ Unknown / No match in criminal registry above threshold.")
+                            st.success("✅ Unknown / No matching record above threshold.")
                             cv2.rectangle(annotated_img, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                             cv2.putText(annotated_img, "Unknown", (box[0], max(20, box[1] - 8)),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
