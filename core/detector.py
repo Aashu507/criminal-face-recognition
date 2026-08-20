@@ -209,11 +209,27 @@ class FaceDetector:
         # Pass 1: Standard detection
         raw_faces = self._app.get(image, max_num=max_faces)
 
-        # Pass 2: If no faces found, retry with slightly smoothed/bilateral image to remove high-frequency edge noise
+        # Pass 2: Multi-Scale Pyramid Fallback (if 0 faces detected on standard scale)
         if not raw_faces and image is not None and image.size > 0:
             import cv2
-            smoothed = cv2.GaussianBlur(image, (3, 3), 0)
-            raw_faces = self._app.get(smoothed, max_num=max_faces)
+            h, w = image.shape[:2]
+            
+            # Try 1.5x upscaling (for small/distant CCTV faces)
+            if max(h, w) < 1200:
+                upscaled = cv2.resize(image, (int(w * 1.5), int(h * 1.5)), interpolation=cv2.INTER_CUBIC)
+                faces_up = self._app.get(upscaled, max_num=max_faces)
+                if faces_up:
+                    # Rescale bounding boxes and landmarks back to original coordinate frame
+                    for f in faces_up:
+                        f.bbox = f.bbox / 1.5
+                        if hasattr(f, "kps") and f.kps is not None:
+                            f.kps = f.kps / 1.5
+                    raw_faces = faces_up
+
+            # Try Gaussian smoothed pass (removes high-frequency compression block artifacts)
+            if not raw_faces:
+                smoothed = cv2.GaussianBlur(image, (3, 3), 0)
+                raw_faces = self._app.get(smoothed, max_num=max_faces)
 
         if not raw_faces:
             return []
