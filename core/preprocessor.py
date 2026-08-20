@@ -60,19 +60,19 @@ class ImagePreprocessor:
         path = Path(image_path)
 
         if not path.exists():
-            console.print(f"[red]✗ File not found:[/red] {image_path}")
+            console.print(f"[red][-] File not found:[/red] {image_path}")
             return None
 
         if path.suffix.lower() not in self.SUPPORTED_FORMATS:
             console.print(
-                f"[red]✗ Unsupported format:[/red] {path.suffix} "
+                f"[red][-] Unsupported format:[/red] {path.suffix} "
                 f"(supported: {', '.join(self.SUPPORTED_FORMATS)})"
             )
             return None
 
         img = cv2.imread(str(path))
         if img is None:
-            console.print(f"[red]✗ Failed to decode image:[/red] {image_path}")
+            console.print(f"[red][-] Failed to decode image:[/red] {image_path}")
             return None
 
         return img
