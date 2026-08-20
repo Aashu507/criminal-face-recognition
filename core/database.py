@@ -65,17 +65,23 @@ class FaceDatabase:
 
     def _ensure_initialized(self):
         """Lazy initialization of ChromaDB client and collection."""
-        if self._collection is not None:
-            return
-
         chromadb = _get_chromadb()
         Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
+
+        if self._client is None:
+            self._client = chromadb.PersistentClient(path=self.persist_dir)
+
+        if self._collection is not None:
+            try:
+                self._collection.count()
+                return
+            except Exception:
+                self._collection = None
 
         console.print(
             f"[cyan][*] Initializing ChromaDB[/cyan] at {self.persist_dir}"
         )
 
-        self._client = chromadb.PersistentClient(path=self.persist_dir)
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},  # Use cosine similarity
@@ -86,6 +92,17 @@ class FaceDatabase:
             f"[green][+] Database ready[/green] — "
             f"{count} criminal face(s) enrolled"
         )
+
+    def _get_collection(self):
+        """Safely returns the collection, reconnecting if invalidated."""
+        self._ensure_initialized()
+        try:
+            self._collection.count()
+            return self._collection
+        except Exception:
+            self._collection = None
+            self._ensure_initialized()
+            return self._collection
 
     def enroll(
         self,
@@ -137,7 +154,7 @@ class FaceDatabase:
                 pass  # Skip thumbnail on error
 
         # Use upsert to handle re-enrollment
-        self._collection.upsert(
+        self._get_collection().upsert(
             ids=[criminal_id],
             embeddings=[embedding.tolist()],
             metadatas=[meta],
@@ -171,8 +188,6 @@ class FaceDatabase:
                 - distance: float (ChromaDB cosine distance)
                 - metadata: dict (name, case_number, etc.)
         """
-        self._ensure_initialized()
-
         query_kwargs = {
             "query_embeddings": [query_embedding.tolist()],
             "n_results": top_k,
@@ -181,7 +196,7 @@ class FaceDatabase:
         if metadata_filter:
             query_kwargs["where"] = metadata_filter
 
-        results = self._collection.query(**query_kwargs)
+        results = self._get_collection().query(**query_kwargs)
 
         matches = []
         if results and results["ids"] and results["ids"][0]:
@@ -215,8 +230,7 @@ class FaceDatabase:
         Returns:
             True if deleted.
         """
-        self._ensure_initialized()
-        self._collection.delete(ids=[criminal_id])
+        self._get_collection().delete(ids=[criminal_id])
         return True
 
     def get(self, criminal_id: str) -> Optional[Dict[str, Any]]:
@@ -229,8 +243,7 @@ class FaceDatabase:
         Returns:
             Dict with criminal data, or None if not found.
         """
-        self._ensure_initialized()
-        result = self._collection.get(
+        result = self._get_collection().get(
             ids=[criminal_id],
             include=["metadatas", "embeddings"],
         )
@@ -244,8 +257,7 @@ class FaceDatabase:
 
     def count(self) -> int:
         """Get total number of enrolled criminals."""
-        self._ensure_initialized()
-        return self._collection.count()
+        return self._get_collection().count()
 
     def list_all(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
@@ -270,12 +282,11 @@ class FaceDatabase:
         Returns:
             List of dicts with 'id', 'name', 'criminal_id', 'metadata', 'thumbnail'.
         """
-        self._ensure_initialized()
         kwargs = {"include": ["metadatas"]}
         if limit:
             kwargs["limit"] = limit
 
-        result = self._collection.get(**kwargs)
+        result = self._get_collection().get(**kwargs)
         records = []
         if result and result["ids"]:
             for i, cid in enumerate(result["ids"]):
@@ -300,9 +311,9 @@ class FaceDatabase:
         Returns:
             Number of records deleted.
         """
-        self._ensure_initialized()
-        count = self._collection.count()
+        count = self._get_collection().count()
         # Recreate the collection to clear it
+        self._ensure_initialized()
         self._client.delete_collection(self.COLLECTION_NAME)
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
